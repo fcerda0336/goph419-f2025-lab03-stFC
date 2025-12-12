@@ -8,3 +8,5 @@ Lab assignment 03 - Implementation and simulation of motion of an object in free
 
 University of Calgary – Computational Methods for Geophysics (F2025)##  simulation of motion of an object in free fall.
 
+Created by Fernando Cerda
+
