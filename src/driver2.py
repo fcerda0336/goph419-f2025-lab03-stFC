@@ -1,11 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import os
-import pandas as pd
-from pathlib import Path
 
-# Import utilities from function.py
+# Import utilities from function.py (make sure the file is named function.py)
 from function import (
     ode_freefall_euler,
     ode_freefall_rk4,
@@ -14,14 +11,6 @@ from function import (
     relative_errors,
     sensitivity,
 )
-
-# -----------------------------
-# Paths: resolve figures dir robustly
-# -----------------------------
-THIS_DIR = Path(__file__).resolve().parent            # .../src
-PROJECT_ROOT = THIS_DIR.parent                        # project root
-FIG_DIR = PROJECT_ROOT / "figures"
-FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # -----------------------------
 # Parameters
@@ -35,7 +24,7 @@ Hs = [10.0, 20.0, 40.0]
 dts = np.linspace(0.001, 0.08, 20)
 
 # -----------------------------
-# 1) Drop time vs Δt and relative error (Figures 1–2)
+# 1) Drop time vs Δt and relative error
 # -----------------------------
 times_euler = sweep_drop_times(g0, dg_dz, cd_star, Hs, dts, method='euler')
 times_rk4   = sweep_drop_times(g0, dg_dz, cd_star, Hs, dts, method='rk4')
@@ -44,13 +33,12 @@ errs_euler = relative_errors(times_euler)
 errs_rk4   = relative_errors(times_rk4)
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
 for H in Hs:
     axes[0].plot(dts, times_euler[H], 'o-', label=f'Euler H={H} m')
     axes[0].plot(dts, times_rk4[H],   's-', label=f'RK4 H={H} m')
 axes[0].set_xlabel('Δt (s)')
 axes[0].set_ylabel('Drop time t* (s)')
-axes[0].set_title('Figure 1. Drop time vs Δt')
+axes[0].set_title('Drop time vs Δt')
 axes[0].legend()
 axes[0].grid(True)
 
@@ -59,18 +47,16 @@ for H in Hs:
     axes[1].plot(dts, errs_rk4[H],   's-', label=f'RK4 H={H} m')
 axes[1].set_xlabel('Δt (s)')
 axes[1].set_ylabel('Relative error')
-axes[1].set_title('Figure 2. Relative error vs Δt')
+axes[1].set_title('Relative error vs Δt')
 axes[1].set_yscale('log')
 axes[1].legend()
 axes[1].grid(True)
 
 plt.tight_layout()
-fig_path_12 = FIG_DIR / "figure1_2_drop_vs_error.png"
-fig.savefig(fig_path_12, dpi=300, bbox_inches='tight')
 plt.show()
 
 # -----------------------------
-# 2) Simulation runtime vs Δt (Figure 3)
+# 2) Simulation runtime vs Δt
 # -----------------------------
 times_runtime_euler = {H: [] for H in Hs}
 times_runtime_rk4   = {H: [] for H in Hs}
@@ -79,28 +65,27 @@ for dt in dts:
     for H in Hs:
         start = time.perf_counter()
         ode_freefall_euler(g0, dg_dz, cd_star, H, dt)
-        times_runtime_euler[H].append(time.perf_counter() - start)
+        end = time.perf_counter()
+        times_runtime_euler[H].append(end - start)
 
         start = time.perf_counter()
         ode_freefall_rk4(g0, dg_dz, cd_star, H, dt)
-        times_runtime_rk4[H].append(time.perf_counter() - start)
+        end = time.perf_counter()
+        times_runtime_rk4[H].append(end - start)
 
-fig3 = plt.figure(figsize=(10, 6))
+plt.figure(figsize=(10, 6))
 for H in Hs:
     plt.plot(dts, times_runtime_euler[H], 'o-', label=f'Euler H={H} m')
     plt.plot(dts, times_runtime_rk4[H],   's-', label=f'RK4 H={H} m')
 plt.xlabel('Δt (s)')
 plt.ylabel('Simulation time (s)')
-plt.title('Figure 3. Simulation runtime vs Δt')
+plt.title('Simulation runtime vs Δt')
 plt.legend()
 plt.grid(True)
-
-fig3_path = FIG_DIR / "figure3_runtime.png"
-plt.savefig(fig3_path, dpi=300, bbox_inches='tight')
 plt.show()
 
 # -----------------------------
-# 3) Sensitivity analysis (Table 1 CSV)
+# 3) Sensitivity analysis (Δt* for +1% parameter changes)
 # -----------------------------
 alpha = 0.01
 dt_sens = 0.002  # small dt for accuracy in sensitivity
@@ -121,21 +106,17 @@ def print_sens(title, sens):
 print_sens("Sensitivity (Euler, α=1%)", sens_euler)
 print_sens("Sensitivity (RK4, α=1%)", sens_rk4)
 
-rows = []
+# Optional: estimate % change needed for ~10 ms shift using linear scaling
+target_ms = 10.0
+def percent_for_10ms(delta_ms):
+    if abs(delta_ms) < 1e-12:
+        return np.inf
+    return target_ms / abs(delta_ms)  # since delta_ms corresponds to +1% change
+
+print("Estimated % change needed for ~10 ms shift (RK4, α=1% baseline):")
 for H in Hs:
     s = sens_rk4[H]
-    rows.append({
-        "Height (m)": H,
-        "Baseline t* (s)": s['baseline'],
-        "Δt* (+1% g0) [ms]": s['dg0']*1000,
-        "Δt* (+1% g') [ms]": s['dgdz']*1000,
-        "Δt* (+1% cD*) [ms]": s['cd']*1000
-    })
-
-df = pd.DataFrame(rows)
-csv_path = FIG_DIR / "table1_sensitivity.csv"
-df.to_csv(csv_path, index=False)
-
-print(f"Saved: {fig_path_12}")
-print(f"Saved: {fig3_path}")
-print(f"Saved: {csv_path}")
+    pct_g0 = percent_for_10ms(s['dg0']*1000)
+    pct_dg = percent_for_10ms(s['dgdz']*1000)
+    pct_cd = percent_for_10ms(s['cd']*1000)
+    print(f"  H={H} m: g0 ≈ {pct_g0:.2f}% | g' ≈ {pct_dg:.2f}% | cD* ≈ {pct_cd:.2f}%")
